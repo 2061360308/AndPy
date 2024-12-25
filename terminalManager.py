@@ -3,78 +3,18 @@
 连接并管理多个终端，连接前端交互
 """
 import asyncio
-import json
 import sys
-import uuid
 from enum import Enum
-from functools import wraps
 
 import unicodedata
 import websockets
 
 from tools import Buffer
 
-WEB_PATH = "web"
-TERMINAL_PATH = "terminal"
-INTERFACE_PATH = "interface"
-
 HOST = "localhost"
 PORT = 8765
 
 DEBUG = False
-
-# 存储接口路径和处理函数的映射
-interface_registry = {}
-
-
-def interface(path):
-    def decorator(func):
-        interface_registry[path] = func
-
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            return func(*args, **kwargs)
-
-        return wrapper
-
-    return decorator
-
-
-async def handle_interface(websocket, message):
-    # 假设消息是一个包含路径的字典，例如：{"path": "/hello"}
-    message = json.loads(message)
-    print(message)
-    path = message.get('path')
-    data = message.get('data')
-    request_id = message.get('id')
-    handler = interface_registry.get(path)
-
-    print(f"Received request: {path}")
-    print(interface_registry)
-
-    if handler:
-        try:
-            response = handler(data)
-
-            response = {
-                "id": request_id,
-                "status": "success",
-                "data": response,
-                "message": None
-            }
-            print(f"Response: {response}")
-        except Exception as e:
-            response = {
-                "id": request_id,
-                "data": None,
-                "status": "error",
-                "message": str(e)
-            }
-
-        await websocket.send(json.dumps(response))
-    else:
-        await websocket.send(json.dumps({"id": request_id, "data": None, "status": "error", "message": "Invalid path"}))
-
 
 script_items = [
     {
@@ -93,21 +33,6 @@ script_items = [
         'website': 'qidian.com'
     },
 ]
-
-
-@interface('/list_scripts')
-def list_scripts(data):
-    return script_items
-
-
-@interface('/run_script')
-def run_script(data):
-    script_website = data.get('script_website')
-    # Todo: Run the script
-    con_id = uuid.uuid4().hex
-    terminal = Terminal(con_id)
-    TerminalManager.terminals[con_id] = terminal
-    return con_id
 
 
 class DeviceType(Enum):
@@ -154,10 +79,6 @@ class Terminal:
     def read(self):
         if DEBUG:
             sys.__stdout__.write('[CustomIO] Waiting for input...\n')
-
-        # while not self.input_buffer:
-        #     pass
-        # return self.input_buffer.read(1)
 
     def flush(self):
         if DEBUG:
@@ -211,22 +132,13 @@ async def websocket_callback(websocket):
     self = TerminalManager()
 
     # 解析path /DeviceType/ID
-
     path = websocket.request.path
-
     con_type, con_id = path.replace('\\', '/').strip('/').split('/')
-
     con_type = int(con_type)
 
     # 判断连接类型和ID是否有效
     if not (DeviceType.has_value(con_type) and con_id):
         return
-
-    # if con_id in self.terminals.keys():
-    #     terminal = self.terminals[con_id]
-    # else:
-    #     terminal = Terminal(con_id)
-    #     self.terminals[con_id] = terminal
 
     # 记录对象
     if con_type == DeviceType.WEB.value:
@@ -235,18 +147,12 @@ async def websocket_callback(websocket):
     elif con_type == DeviceType.TERMINAL.value:
         if con_id not in self.program_connections.keys():
             self.program_connections[con_id] = websocket
-    elif con_type == DeviceType.INTERFACE.value:
-        if con_id not in self.interface_connections.keys():
-            self.interface_connections[con_id] = websocket
 
     try:
         # 记录连接并处理客户端消息
         async for message in websocket:
-            if con_type == DeviceType.INTERFACE.value:
-                await handle_interface(websocket, message)
-            else:
-                terminal = self.terminals[con_id]
-                await terminal.handle(websocket, con_type, message)
+            terminal = self.terminals[con_id]
+            await terminal.handle(websocket, con_type, message)
 
     except websockets.ConnectionClosed:
         print(f"Client {con_id} | Type: {con_type} disconnected")
@@ -256,8 +162,6 @@ async def websocket_callback(websocket):
             self.web_connections.pop(con_id)
         elif con_type == DeviceType.TERMINAL:
             self.program_connections.pop(con_id)
-        elif con_type == DeviceType.INTERFACE:
-            self.interface_connections.pop(con_id)
 
 
 class TerminalManager:
