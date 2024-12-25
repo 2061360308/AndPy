@@ -9,12 +9,10 @@ from enum import Enum
 import unicodedata
 import websockets
 
-from tools import Buffer
+from utils.tools import Buffer
+from config import DEBUG, HOST, WEBSOCKET_PORT
 
-HOST = "localhost"
-PORT = 8765
-
-DEBUG = False
+PORT = WEBSOCKET_PORT
 
 script_items = [
     {
@@ -189,6 +187,4 @@ class TerminalManager:
             await server.serve_forever()
 
 
-if __name__ == '__main__':
-    print(f"WebSocket Server started at ws://{HOST}:{PORT}")
-    TerminalManager()
+TermManager = TerminalManager()
